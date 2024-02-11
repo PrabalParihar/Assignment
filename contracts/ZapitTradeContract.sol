@@ -1,6 +1,5 @@
-
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -11,25 +10,22 @@ contract ZapitTradeContract {
         uint256 amount;
         bool isERC20;
         bool isFulfilled;
-        mapping(address => bytes32) buyerMessages;
+        mapping(address => string) buyerMessages; // Changed from bytes32 to string
         address[] registeredBuyers;
     }
 
     mapping(uint256 => Order) private orders;
     uint256 private nextOrderId;
 
-    // Events
     event OrderCreated(uint256 orderId, address indexed seller, address indexed tokenAddress, uint256 amount, bool isERC20);
-    event BuyerRegistered(uint256 orderId, address indexed buyer, bytes32 message);
-    event OrderFulfilled(uint256 orderId, address indexed buyer, bytes32 message);
+    event BuyerRegistered(uint256 orderId, address indexed buyer, string message); // Changed from bytes32 to string
+    event OrderFulfilled(uint256 orderId, address indexed buyer, string message); // Changed from bytes32 to string
 
-    // Modifier to check if the caller is the seller of the order
     modifier onlySeller(uint256 orderId) {
         require(msg.sender == orders[orderId].seller, "Caller is not the seller of the order");
         _;
     }
 
-    // Function to create an order
     function createOrder(address tokenAddress, uint256 amount, bool isERC20) external returns (uint256) {
         require(amount > 0, "Amount must be greater than 0");
         if(isERC20) {
@@ -48,8 +44,7 @@ contract ZapitTradeContract {
         return orderId;
     }
 
-    // Function for a buyer to register with a random number message
-    function registerAsBuyer(uint256 orderId, bytes32 message) external {
+    function registerAsBuyer(uint256 orderId, string calldata message) external {
         Order storage order = orders[orderId];
         require(!order.isFulfilled, "Order is already fulfilled");
         order.buyerMessages[msg.sender] = message;
@@ -58,11 +53,11 @@ contract ZapitTradeContract {
         emit BuyerRegistered(orderId, msg.sender, message);
     }
 
-    // Function to fulfill an order
-    function fulfillOrder(uint256 orderId, address buyer, bytes32 message) external onlySeller(orderId) {
+    function fulfillOrder(uint256 orderId, address buyer, string calldata message) external onlySeller(orderId) {
         Order storage order = orders[orderId];
         require(!order.isFulfilled, "Order is already fulfilled");
-        require(order.buyerMessages[buyer] == message, "Message does not match buyer's message");
+        // Comparing strings in Solidity requires hashing them since strings are not directly comparable
+        require(keccak256(abi.encodePacked(order.buyerMessages[buyer])) == keccak256(abi.encodePacked(message)), "Message does not match buyer's message");
 
         order.isFulfilled = true;
         if(order.isERC20) {
@@ -74,18 +69,14 @@ contract ZapitTradeContract {
         emit OrderFulfilled(orderId, buyer, message);
     }
 
-    // Function to get order details
     function getOrderDetails(uint256 orderId) external view returns (address, address, uint256, bool, bool, address[] memory) {
         Order storage order = orders[orderId];
         return (order.seller, order.tokenAddress, order.amount, order.isERC20, order.isFulfilled, order.registeredBuyers);
     }
 
-    // Function to retrieve the message for a specific buyer
-    function getBuyerMessage(uint256 orderId, address buyer) external view returns (bytes32) {
+    function getBuyerMessage(uint256 orderId, address buyer) external view returns (string memory) {
         return orders[orderId].buyerMessages[buyer];
     }
 
-    // Fallback function to accept Ether
     receive() external payable {}
 }
-
